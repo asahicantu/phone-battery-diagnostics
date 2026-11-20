@@ -7,6 +7,9 @@ This folder contains:
 | `README.md` | This document: findings, the exact commands used in the investigation, how to run the script, the debloat reference and sources. |
 | `Invoke-PhoneDiagnostics.ps1` | A **read-only** PowerShell script that repeats the whole investigation, writes a Markdown report with advice and keeps a history CSV. |
 | `dashboard.template.html` | Template for the interactive dashboard. The script fills it with your data. |
+| `catalog.json` | **Shared recommendations**: apps to restrict or keep, debloat tiers, settings fixes, diagnostic commands. Used by the two tools below. |
+| `Invoke-PhoneTuning.ps1` | **PC tool that makes changes**: list, restrict, allow, force-stop, disable, enable, settings fixes, guided mode, undo log. Every change needs confirmation. |
+| `android\` | **Phone Tuner**: an Android app (Kotlin/Compose) that does the same from the phone itself (through Shizuku), or copies the adb commands for your PC. |
 | `reports\` | Created by the script. One folder per run (`report.md`, `summary.json`, `raw\` dumps), plus `history.csv` and **`dashboard.html`**. |
 
 > **Safety:** nothing in this investigation, and nothing in the script, changes the phone. The script
@@ -365,6 +368,93 @@ adb -s $s shell pm list packages -d | Select-String facebook         # verify
 - `pm uninstall -k --user 0 <system app>` is **blocked on Android 17** without root ("only root can delete system app for a particular user"). If something was uninstalled per user on an older version, restore it with `adb shell cmd package install-existing <pkg>`.
 - Disable in small batches, reboot, and use the phone for a day before the next batch. A disabled package may come back after a firmware update.
 - `--user 0` only affects the personal profile. Users 95 and 150 cannot be reached from adb.
+
+### 5.1 `Invoke-PhoneTuning.ps1` – making changes from the PC
+
+Nothing changes without confirmation:
+- Every command goes through PowerShell's confirmation (`ShouldProcess`, impact High).
+- `-WhatIf` only prints the commands; `-Confirm:$false` skips the prompts.
+- Package names are checked against a strict pattern before they reach the phone's shell.
+- Never-touch packages cannot be disabled, and keep-list apps (WhatsApp, MFA, watch, payments) produce a warning.
+- Every change is written to `reports\actions-log.csv` together with its undo command.
+
+```powershell
+.\Invoke-PhoneTuning.ps1                         # status: running apps + everything the catalog has advice for
+.\Invoke-PhoneTuning.ps1 -All                    # status of every user-installed app
+.\Invoke-PhoneTuning.ps1 -Recommended            # guided: numbered list -> pick "1,3-5" or "all" -> type YES once
+.\Invoke-PhoneTuning.ps1 -Action Restrict  -Package dk.kanpla.unisonfm.twa,com.alibaba.aliexpresshd
+.\Invoke-PhoneTuning.ps1 -Action Allow     -Package com.reddit.frontpage
+.\Invoke-PhoneTuning.ps1 -Action ForceStop -Package com.alibaba.aliexpresshd
+.\Invoke-PhoneTuning.ps1 -Action Disable   -Package com.facebook.appmanager,com.facebook.services -WhatIf
+.\Invoke-PhoneTuning.ps1 -Action Enable    -Package com.facebook.appmanager
+.\Invoke-PhoneTuning.ps1 -KillBackground         # am kill-all: only cached background processes, temporary
+.\Invoke-PhoneTuning.ps1 -Tips                   # settings fixes and whether they are done
+.\Invoke-PhoneTuning.ps1 -ApplyTip wifi-scan-off,ble-scan-off
+.\Invoke-PhoneTuning.ps1 -ShowLog
+.\Invoke-PhoneTuning.ps1 -Undo -Last 3           # revert the last 3 changes (newest first)
+.\Invoke-PhoneTuning.ps1 -SelfTest
+```
+
+| Action | Command on the phone | Lasts | Undo |
+|---|---|---|---|
+| Restrict | `cmd appops set --user 0 <pkg> RUN_ANY_IN_BACKGROUND ignore` | Permanent. Same as *Battery → Restricted* in app info. | Allow |
+| Allow | `cmd appops set --user 0 <pkg> RUN_ANY_IN_BACKGROUND allow` | Permanent | Restrict |
+| ForceStop | `am force-stop --user 0 <pkg>` | Until you open the app or it receives a push | – |
+| KillBackground | `am kill-all` | Temporary. Only kills idle cached processes. | – |
+| Disable | `pm disable-user --user 0 <pkg>` | Permanent (data kept) | Enable |
+| Enable | `pm enable --user 0 <pkg>` | Permanent | Disable |
+| ApplyTip | e.g. `settings put global wifi_scan_always_enabled 0` | Permanent | the tip's `undo` |
+
+Limits:
+- adb only reaches the personal profile (user 0). Work profile, Dual Apps and Secure Folder apps must be handled in the phone's settings, or by pausing or removing the profile.
+- Samsung's own "Deep sleeping" list cannot be set by adb. "Restrict" is Android's standard equivalent.
+- Force-stopping everything regularly is counter-productive: apps restart, and a cold start costs more than staying cached.
+
+To add or change recommendations, edit `catalog.json`. Both the script and the app (after rebuilding) use it.
+
+### 5.2 Phone Tuner – the Android app (`android\`)
+
+An ordinary app cannot run adb commands. Phone Tuner uses **[Shizuku](https://shizuku.rikka.app/)**, a free, open-source app that runs a service with the same rights as `adb shell`. You start it once after each reboot, and it grants that access only to apps you approve. Phone Tuner runs its commands in a Shizuku "user service" with shell rights. Without Shizuku, the app runs in **PC mode**: it still shows the apps and the advice, and every action becomes a **Copy for PC** button that puts the exact `adb shell …` commands on the clipboard.
+
+**Tabs**
+
+| Tab | What it does |
+|---|---|
+| Apps | Running / Recommended / Restricted / All filters, plus search. Each app shows RAM, process count, profiles, background status, standby bucket and the catalog advice. Tap an app for Restrict / Allow / Force stop / Disable / Enable / App info. Tick several apps for bulk actions. **Select recommended** ticks the apps to restrict, and **Kill background** runs `am kill-all`. |
+| Debloat | Safe / optional / never-touch lists, showing which are installed and enabled. Safe ones are pre-ticked. Disable or Enable the selected packages. Never-touch items cannot be selected. |
+| Fixes | The settings tips. Shows the current value (e.g. Wi-Fi scanning on), with **Apply** / **Revert** where a command exists and **Open settings** for manual steps. |
+| Diagnose | **Quick check** (screen-off drain %/h, Wi-Fi wakeups, multicast holders, profiles, memory/swap) and every diagnostic command from the catalog, with **Run**, **Copy adb** and **Copy output**. |
+| Log | Every command run from the app, with OK/failed, its output and an **Undo** button. **Copy all undo commands** gives the adb equivalents. |
+
+Every action opens a confirmation dialog first. It lists each exact command and its undo, and warns about keep-list apps.
+
+**Build**
+```powershell
+cd C:\Users\asahi\source\ai\phone-battery-diagnostics\android
+$env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
+.\gradlew.bat testDebugUnitTest assembleDebug        # 7 unit tests + APK
+# -> app\build\outputs\apk\debug\app-debug.apk
+```
+You can also open the `android` folder in Android Studio and press Run.
+
+**Install and set up (one time)**
+1. Install the app: `adb install -r app\build\outputs\apk\debug\app-debug.apk`
+2. Install **Shizuku** from Google Play (`moe.shizuku.privileged.api`).
+3. Start Shizuku. This is needed again after every reboot.
+   - *On the phone only:* Settings → Developer options → **Wireless debugging** on. In Shizuku, tap **Start via Wireless debugging** and pair once using the code from the notification.
+   - *From the PC:* in Shizuku, tap **Start via adb** and run the command it shows.
+4. Open Phone Tuner and tap **Grant permission**. The header then says *Connected via Shizuku*.
+
+**Source layout**
+
+| File | Purpose |
+|---|---|
+| `app/build.gradle.kts` | AGP 9.5, Compose, Shizuku 13.1.5. A small task copies `../catalog.json` into the APK assets. |
+| `IShellService.aidl`, `Shell.kt` | The shell service that runs inside Shizuku (`sh -c`, output capped below the Binder limit) and the client that connects to it, tracks status and runs commands. |
+| `Logic.kt` | Pure logic shared with the PowerShell design: package-name validation, the action→command/undo table, parsers (`pm`, `ps`, `appops`, `standby buckets`, batterystats quick check) and the advice rules. Unit-tested in `LogicTest.kt`. |
+| `Catalog.kt` | Loads `catalog.json`. |
+| `TunerViewModel.kt` | Loads app state (through Shizuku, or PackageManager in PC mode), runs commands and writes the undo journal (`files/actions.jsonl`). |
+| `MainActivity.kt` | The Compose UI (Material 3, follows light/dark and dynamic colour). |
 
 ## 6. Debloat reference (packages present and enabled on this phone)
 
