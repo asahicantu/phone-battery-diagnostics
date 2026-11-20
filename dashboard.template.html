@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone Battery Dashboard</title>
+<!-- Template: Invoke-PhoneDiagnostics.ps1 replaces the DATA placeholder below and writes reports\dashboard.html -->
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f1f0ec; --hover: rgba(11,11,11,.05);
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --neutral: #c3c2b7;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --better: #006300; --worse: #d03b3b; --accent: #2a78d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #242422; --hover: rgba(255,255,255,.06);
+    --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --neutral: #52514e;
+    --better: #0ca30c; --worse: #e66767; --accent: #3987e5;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #242422; --hover: rgba(255,255,255,.06);
+  --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --neutral: #52514e;
+  --better: #0ca30c; --worse: #e66767; --accent: #3987e5;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--accent); }
+button { font: inherit; color: inherit; }
+.topbar { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+.topbar h1 { font-size: 17px; margin: 0; font-weight: 650; }
+.topbar .device { color: var(--ink-2); font-size: 13px; }
+.topbar .spacer { flex: 1; }
+.btn { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.btn:hover { background: var(--hover); }
+.btn:focus-visible, .nav-item:focus-visible, .tab:focus-visible, .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: calc(100vh - 54px); }
+nav { border-right: 1px solid var(--border); background: var(--surface); padding: 12px 8px; overflow-y: auto; }
+.nav-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 12px 12px 6px; }
+.nav-item { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; border: 0; background: none; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+.nav-item:hover { background: var(--hover); }
+.nav-item[aria-current="true"] { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
+.nav-item .t { font-weight: 600; }
+.nav-item .s { font-size: 12px; color: var(--ink-2); display: flex; gap: 6px; align-items: center; }
+main { padding: 20px 24px 48px; min-width: 0; }
+main:focus { outline: none; }
+h2 { font-size: 20px; margin: 0 0 4px; }
+h3 { font-size: 15px; margin: 0 0 10px; }
+.sub { color: var(--ink-2); margin: 0 0 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.card .hint { color: var(--ink-2); font-size: 13px; margin: -4px 0 12px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; text-align: left; }
+button.tile { cursor: pointer; }
+button.tile:hover { background: var(--hover); }
+.tile[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+.tile .label { color: var(--ink-2); font-size: 12.5px; }
+.tile .value { font-size: 24px; font-weight: 650; line-height: 1.1; }
+.tile .value small { font-size: 13px; font-weight: 500; color: var(--ink-2); margin-left: 3px; }
+.tile .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.tile .stats { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.delta { font-size: 12px; font-weight: 600; }
+.delta.better { color: var(--better); } .delta.worse { color: var(--worse); } .delta.flat { color: var(--ink-2); }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 1px 8px 1px 6px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink); white-space: nowrap; }
+.chip-icon { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; font-size: 9px; color: #fff; }
+.st-good .chip-icon { background: var(--good); }
+.st-warning .chip-icon { background: var(--warning); color: #0b0b0b; }
+.st-serious .chip-icon { background: var(--serious); }
+.st-critical .chip-icon { background: var(--critical); }
+.st-info .chip-icon { background: var(--muted); }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 0 0 16px; overflow-x: auto; }
+.tab { border: 0; background: none; padding: 8px 12px; border-bottom: 2px solid transparent; cursor: pointer; color: var(--ink-2); white-space: nowrap; }
+.tab:hover { color: var(--ink); }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.badge { font-size: 11px; background: var(--surface-2); border-radius: 999px; padding: 0 6px; margin-left: 4px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); gap: 16px; }
+.grid2 > * { min-width: 0; }
+.grid2 > .card { margin-bottom: 0; }
+/* bar rows */
+.bars { display: flex; flex-direction: column; gap: 4px; }
+.bar-row { display: grid; grid-template-columns: minmax(120px, 38%) minmax(0, 1fr) 84px; align-items: center; gap: 10px; padding: 3px 4px; border-radius: 6px; }
+.bar-row:hover { background: var(--hover); }
+.bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.bar-label .tag { font-size: 10.5px; font-weight: 600; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; margin-right: 6px; color: var(--ink-2); }
+.track { display: flex; gap: 2px; height: 14px; }
+.seg { height: 100%; min-width: 0; }
+.seg:last-child { border-radius: 0 4px 4px 0; }
+.bar-value { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-2); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 10px; font-size: 12.5px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+/* tables */
+.table-tools { display: flex; gap: 8px; align-items: center; margin: 12px 0 8px; flex-wrap: wrap; }
+.table-tools input { border: 1px solid var(--border); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 6px 10px; min-width: 220px; }
+.table-tools .count { color: var(--muted); font-size: 12px; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 7px 10px; border-bottom: 1px solid var(--grid); text-align: left; vertical-align: top; }
+th { background: var(--surface-2); font-weight: 600; cursor: pointer; white-space: nowrap; user-select: none; position: sticky; top: 0; }
+th[aria-sort="ascending"]::after { content: " ▲"; font-size: 10px; }
+th[aria-sort="descending"]::after { content: " ▼"; font-size: 10px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: var(--hover); }
+/* advice */
+.advice { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; padding: 12px 0; border-bottom: 1px solid var(--grid); }
+.advice:last-child { border-bottom: 0; }
+.advice .area { font-weight: 600; }
+.advice .fix { grid-column: 2; color: var(--ink-2); }
+/* charts */
+.chart { width: 100%; display: block; }
+.chart text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart .grid { stroke: var(--grid); stroke-width: 1; }
+.chart .base { stroke: var(--axis); stroke-width: 1; }
+.chart .ref { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; }
+.chart .line { fill: none; stroke: var(--s1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .pt { fill: var(--s1); stroke: var(--surface); stroke-width: 2; }
+.chart .cross { stroke: var(--axis); stroke-width: 1; }
+.spark .line { stroke-width: 1.5; }
+.tip { position: fixed; z-index: 20; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--border); box-shadow: 0 6px 24px rgba(0,0,0,.18); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; max-width: 340px; }
+.tip b { font-weight: 650; }
+.tip .k { color: var(--ink-2); }
+.tip .line-item { display: flex; align-items: center; gap: 6px; }
+pre { background: var(--surface-2); border-radius: 8px; padding: 12px; overflow: auto; font-size: 12px; margin: 0; }
+.pkg-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.pkg { font: 12px ui-monospace, Consolas, monospace; border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; background: var(--surface-2); display: inline-flex; gap: 6px; align-items: center; max-width: 100%; overflow-wrap: anywhere; }
+.note { border-left: 3px solid var(--warning); background: var(--surface-2); padding: 10px 12px; border-radius: 6px; margin: 0 0 12px; color: var(--ink-2); }
+.empty { text-align: center; padding: 60px 20px; color: var(--ink-2); }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 13px; }
+.kv dt { color: var(--ink-2); } .kv dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-word; }
+.users { display: flex; gap: 8px; flex-wrap: wrap; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+@media (max-width: 860px) {
+  .layout { grid-template-columns: 1fr; }
+  nav { border-right: 0; border-bottom: 1px solid var(--border); max-height: 220px; }
+  main { padding: 16px; }
+  .bar-row { grid-template-columns: minmax(90px, 40%) minmax(0, 1fr) 64px; }
+  .grid2 { grid-template-columns: minmax(0, 1fr); }
+  .table-tools input { min-width: 0; width: 100%; }
+}
+@media (forced-colors: active) { .seg, .sw, .chip-icon { forced-color-adjust: none; } }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>Phone battery dashboard</h1>
+  <span class="device" id="device"></span>
+  <span class="spacer"></span>
+  <button class="btn" id="theme" type="button" aria-label="Switch colour theme">Theme: auto</button>
+</header>
+<div class="layout">
+  <nav id="nav" aria-label="Reports"></nav>
+  <main id="main"></main>
+</div>
+<div class="tip" id="tip" role="tooltip" hidden></div>
+
+<script>
+"use strict";
+const DATA = /*__DASHBOARD_DATA__*/null || { runs: [], history: [] };
+
+// ---------- tiny DOM helpers ----------
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "html") e.innerHTML = v;
+    else e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat(Infinity)) if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+}
+const NS = "http://www.w3.org/2000/svg";
+function sv(tag, attrs, ...kids) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) e.setAttribute(k, v);
+  for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+}
+const num = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? NaN : Number(v);
+function fmt(v, dec = 1) {
+  v = num(v); if (isNaN(v)) return "–";
+  return v.toLocaleString("en-US", { maximumFractionDigits: dec, minimumFractionDigits: 0 });
+}
+function fmtDur(sec) {
+  sec = num(sec); if (isNaN(sec)) return "–";
+  if (sec >= 3600) return Math.floor(sec / 3600) + "h " + String(Math.floor(sec % 3600 / 60)).padStart(2, "0") + "m";
+  if (sec >= 60) return Math.floor(sec / 60) + "m " + String(Math.floor(sec % 60)).padStart(2, "0") + "s";
+  return sec.toFixed(1) + "s";
+}
+const parseDate = s => s ? new Date(s) : null;   // "2026-11-20T23:23:13" = local time
+const fmtDate = d => d ? d.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "–";
+const fmtShort = d => d.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+// ---------- status (always icon + label, never colour alone) ----------
+const STATUS = {
+  good: { icon: "✓", label: "Good" }, warning: { icon: "!", label: "Watch" },
+  serious: { icon: "▲", label: "High" }, critical: { icon: "✕", label: "Critical" }, info: { icon: "i", label: "Info" }
+};
+const chip = (st, text) => h("span", { class: "chip st-" + st }, h("span", { class: "chip-icon", "aria-hidden": "true" }, STATUS[st].icon), text || STATUS[st].label);
+const SEVERITY = { HIGH: "critical", MEDIUM: "warning", LOW: "info" };
+
+// ---------- metric catalogue (history.csv column  ->  run summary value) ----------
+const METRICS = [
+  { h: "ScreenOffPctPerHour", label: "Screen-off drain", unit: "%/h", dec: 2, better: "down", run: r => r.metrics.screenOffRate,
+    st: v => v < 1 ? "good" : v < 1.5 ? "warning" : "critical", ref: { v: 1, label: "healthy ≤ 1 %/h" },
+    help: "Battery % lost per hour while the screen is off. Healthy phones lose 0.5–1 %/h. This is the main number to watch." },
+  { h: "WifiWakeups", label: "Wi-Fi chip wakeups", dec: 0, better: "down", run: r => r.metrics.wifiWakeups,
+    st: v => v < 2000 ? "good" : v < 8000 ? "warning" : "critical", ref: { v: 2000, label: "alert ≥ 2,000" },
+    help: "How many times the Wi-Fi chip woke the CPU since the last full charge (network chatter, multicast, IPv6 RA)." },
+  { h: "FailedSuspend", label: "Failed sleep attempts", dec: 0, better: "down", run: r => r.metrics.failedSuspend,
+    st: v => v < 1000 ? "good" : v < 5000 ? "warning" : "critical",
+    help: "Times the phone tried to go to deep sleep and a device (usually Wi-Fi or modem) refused." },
+  { h: "DischargeMah", label: "Drained since charge", unit: "mAh", dec: 0, better: "down", run: r => r.metrics.dischargeMah,
+    help: "Energy used since the last full charge. Depends on how long the phone has been off the charger." },
+  { h: "OnBatteryH", label: "Time on battery", unit: "h", dec: 1, better: null, run: r => r.metrics.onBatteryHours,
+    help: "Hours since the last full charge that the phone ran on battery (the measurement window)." },
+  { h: "ScreenOffH", label: "Screen-off time", unit: "h", dec: 1, better: null, run: r => r.metrics.screenOffHours,
+    help: "Hours on battery with the screen off." },
+  { h: "Level", label: "Battery level at capture", unit: "%", dec: 0, better: null, run: r => r.battery.level,
+    help: "Charge level when the diagnostics ran." },
+  { h: "HealthAsoc", label: "Battery health", unit: "%", dec: 0, better: "up", run: r => r.battery.healthAsoc,
+    st: v => v >= 90 ? "good" : v >= 80 ? "warning" : "critical",
+    help: "Samsung ASOC: remaining capacity vs. new. Below 80% the battery is worn." },
+  { h: "TempC", label: "Battery temperature", unit: "°C", dec: 1, better: "down", run: r => r.battery.tempC,
+    st: v => v < 38 ? "good" : v < 42 ? "warning" : "critical",
+    help: "Battery temperature at capture (higher while charging)." },
+  { h: "SwapUsedMB", label: "Swap used", unit: "MB", dec: 0, better: "down", run: r => r.metrics.swapUsedMB,
+    st: v => v < 1024 ? "good" : v < 2048 ? "warning" : "serious",
+    help: "Memory pushed out to storage. High values mean RAM pressure, which keeps the CPU busy." },
+  { h: "UsersRunning", label: "Profiles running", dec: 0, better: "down", run: r => (r.users || []).filter(u => u.Running).length,
+    st: v => v <= 1 ? "good" : v <= 2 ? "warning" : "serious",
+    help: "Android users running at once (personal, work profile, Dual Apps, Secure Folder). Each runs its own background services." },
+  { h: "ThirdPartyApps", label: "User-installed apps", dec: 0, better: "down", run: r => r.metrics.thirdPartyApps,
+    st: v => v < 150 ? "good" : v < 250 ? "warning" : "serious",
+    help: "Apps you installed. More apps = more background jobs and memory use." },
+];
+// extra tiles only shown on a single report
+const RUN_EXTRA = [
+  { label: "Screen-on drain", unit: "%/h", dec: 1, better: "down", run: r => r.metrics.screenOnRate, help: "Battery % per hour while using the phone. 8–15 %/h is typical." },
+  { label: "Modem wake events", dec: 0, better: "down", run: r => r.metrics.modemWakes, help: "Kernel wakelock events from the cellular modem." },
+  { label: "Connectivity changes", dec: 0, better: "down", run: r => r.metrics.connChanges, st: v => v < 100 ? "good" : v < 250 ? "warning" : "serious", help: "Network switches (Wi-Fi ↔ mobile, VPN reconnects) since last charge." },
+  { label: "Weak signal", unit: "h", dec: 1, better: "down", run: r => r.metrics.weakSignalHours, st: v => v < 1 ? "good" : v < 3 ? "warning" : "serious", help: "Time with weak cellular signal; the modem uses more power." },
+  { label: "Wi-Fi multicast lock", unit: "h", dec: 1, better: "down", run: r => r.metrics.multicastHours, help: "Total time an app forced the Wi-Fi chip to receive all multicast traffic." },
+  { label: "RAM free", unit: "MB", dec: 0, better: "up", run: r => r.metrics.memFreeMB, help: "Free RAM at capture." },
+];
+
+// ---------- data prep ----------
+const runs = (DATA.runs || []).map(r => ({ ...r, date: parseDate(r.capturedAt) })).sort((a, b) => b.date - a.date);
+const history = (DATA.history || []).map(r => ({ ...r, date: parseDate(r.Timestamp) })).filter(r => r.date && !isNaN(r.date)).sort((a, b) => a.date - b.date);
+const prevRun = run => runs[runs.indexOf(run) + 1] || null;
+function runForHistory(row) {   // nearest report captured within 30 min of the CSV row
+  let best = null, gap = 30 * 60 * 1000;
+  for (const r of runs) { const g = Math.abs(r.date - row.date); if (g <= gap) { gap = g; best = r; } }
+  return best;
+}
+
+// ---------- tooltip ----------
+const tip = document.getElementById("tip");
+function showTip(html, x, y) {
+  tip.innerHTML = html; tip.hidden = false;
+  const r = tip.getBoundingClientRect();
+  let left = x + 14, top = y + 14;
+  if (left + r.width > innerWidth - 8) left = x - r.width - 14;
+  if (top + r.height > innerHeight - 8) top = y - r.height - 14;
+  tip.style.left = Math.max(8, left) + "px"; tip.style.top = Math.max(8, top) + "px";
+}
+const hideTip = () => { tip.hidden = true; };
+document.addEventListener("pointermove", e => {
+  const t = e.target.closest && e.target.closest("[data-tip]");
+  if (t) showTip(t.dataset.tip, e.clientX, e.clientY); else if (!e.target.closest(".chart")) hideTip();
+});
+document.addEventListener("scroll", hideTip, true);
+
+// ---------- components ----------
+function deltaEl(cur, prev, m) {
+  cur = num(cur); prev = num(prev);
+  if (isNaN(cur) || isNaN(prev)) return null;
+  const d = cur - prev;
+  if (Math.abs(d) < 1e-9) return h("span", { class: "delta flat" }, "= same as previous");
+  const arrow = d > 0 ? "▲" : "▼";
+  const sign = d > 0 ? "+" : "−";
+  let cls = "flat", word = "";
+  if (m.better) { const good = (m.better === "down") ? d < 0 : d > 0; cls = good ? "better" : "worse"; word = good ? " better" : " worse"; }
+  return h("span", { class: "delta " + cls }, `${arrow} ${sign}${fmt(Math.abs(d), m.dec)}${m.unit ? " " + m.unit : ""}${word}`);
+}
+
+function tile(m, value, opts = {}) {
+  const v = num(value);
+  const st = m.st && !isNaN(v) ? m.st(v) : null;
+  const tag = opts.onclick ? "button" : "div";
+  return h(tag, { class: "tile", type: opts.onclick ? "button" : null, onclick: opts.onclick, "aria-pressed": opts.onclick ? String(!!opts.pressed) : null, title: m.help || null },
+    h("div", { class: "label" }, m.label),
+    h("div", { class: "row" },
+      h("div", { class: "value" }, fmt(v, m.dec), m.unit ? h("small", null, m.unit) : null),
+      st ? chip(st) : null),
+    opts.prev !== undefined ? deltaEl(v, opts.prev, m) : null,
+    opts.stats ? h("div", { class: "stats" }, opts.stats) : null,
+    opts.spark || null);
+}
+
+function sparkline(values) {
+  const W = 160, H = 30, pts = values.map(num).filter(v => !isNaN(v));
+  const svg = sv("svg", { class: "chart spark", viewBox: `0 0 ${W} ${H}`, width: W, height: H, style: "max-width:100%", "aria-hidden": "true" });
+  if (!pts.length) return svg;
+  const max = Math.max(...pts), min = Math.min(...pts), span = max - min || 1;
+  const X = i => pts.length === 1 ? W / 2 : 4 + i * (W - 8) / (pts.length - 1);
+  const Y = v => H - 4 - (v - min) / span * (H - 8);
+  if (pts.length > 1) svg.append(sv("polyline", { class: "line", points: pts.map((v, i) => `${X(i)},${Y(v)}`).join(" ") }));
+  svg.append(sv("circle", { class: "pt", cx: X(pts.length - 1), cy: Y(pts[pts.length - 1]), r: 3 }));
+  return svg;
+}
+
+function niceStep(max, n = 4) {
+  const raw = max / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
+}
+
+function lineChart(points, m, width) {
+  const W = Math.max(300, width), H = 260, M = { l: 56, r: 16, t: 18, b: 34 };
+  const iw = W - M.l - M.r, ih = H - M.t - M.b;
+  const ys = points.map(p => p.y).concat(m.ref ? [m.ref.v] : []);
+  const step = niceStep(Math.max(...ys, 0) * 1.1 || 1), yMax = Math.ceil((Math.max(...ys, 0) * 1.1 || 1) / step) * step;
+  const t0 = +points[0].x, span = +points[points.length - 1].x - t0;
+  const X = p => span ? M.l + (+p.x - t0) / span * iw : M.l + iw / 2;
+  const Y = v => M.t + ih - v / yMax * ih;
+  const svg = sv("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": `${m.label} over time` });
+  for (let v = 0; v <= yMax + 1e-9; v += step) {
+    svg.append(sv("line", { class: v === 0 ? "base" : "grid", x1: M.l, x2: W - M.r, y1: Y(v), y2: Y(v) }));
+    svg.append(sv("text", { x: M.l - 8, y: Y(v) + 4, "text-anchor": "end" }, fmt(v, step < 1 ? 2 : 0)));
+  }
+  if (m.ref) {
+    svg.append(sv("line", { class: "ref", x1: M.l, x2: W - M.r, y1: Y(m.ref.v), y2: Y(m.ref.v) }));
+    svg.append(sv("text", { x: W - M.r, y: Y(m.ref.v) - 5, "text-anchor": "end" }, m.ref.label));
+  }
+  const every = Math.max(1, Math.ceil(points.length / Math.max(2, Math.floor(iw / 110))));
+  points.forEach((p, i) => { if (i % every === 0 || i === points.length - 1) svg.append(sv("text", { x: X(p), y: H - 10, "text-anchor": points.length === 1 ? "middle" : i === 0 ? "start" : i === points.length - 1 ? "end" : "middle" }, fmtShort(p.x))); });
+  if (points.length > 1) svg.append(sv("polyline", { class: "line", points: points.map(p => `${X(p)},${Y(p.y)}`).join(" ") }));
+  const cross = sv("line", { class: "cross", y1: M.t, y2: M.t + ih, visibility: "hidden" });
+  svg.append(cross);
+  const dots = points.map(p => { const c = sv("circle", { class: "pt", cx: X(p), cy: Y(p.y), r: 4 }); svg.append(c); return c; });
+  const overlay = sv("rect", { x: M.l - 10, y: M.t, width: iw + 20, height: ih, fill: "transparent", style: "cursor:crosshair" });
+  let active = -1;
+  overlay.addEventListener("pointermove", e => {
+    const box = svg.getBoundingClientRect(), x = (e.clientX - box.left) * W / box.width;
+    let best = 0; points.forEach((p, i) => { if (Math.abs(X(p) - x) < Math.abs(X(points[best]) - x)) best = i; });
+    if (active >= 0) dots[active].setAttribute("r", 4);
+    active = best; dots[best].setAttribute("r", 6);
+    const p = points[best];
+    cross.setAttribute("x1", X(p)); cross.setAttribute("x2", X(p)); cross.setAttribute("visibility", "visible");
+    const st = m.st ? m.st(p.y) : null;
+    showTip(`<b>${esc(fmtDate(p.x))}</b><div class="line-item"><span class="sw" style="background:var(--s1)"></span>${esc(m.label)}: <b>${esc(fmt(p.y, m.dec))}${m.unit ? " " + esc(m.unit) : ""}</b></div>${st ? `<div class="k">Status: ${STATUS[st].label}</div>` : ""}${p.run ? '<div class="k">Click to open this report</div>' : ""}`, e.clientX, e.clientY);
+  });
+  overlay.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); if (active >= 0) dots[active].setAttribute("r", 4); active = -1; hideTip(); });
+  overlay.addEventListener("click", () => { if (active >= 0 && points[active].run) location.hash = `#/run/${encodeURIComponent(points[active].run.id)}/overview`; });
+  svg.append(overlay);
+  return svg;
+}
+
+// horizontal bar rows. series: [{key,label,color}] (stacked) or single value via opts.value
+function barRows(items, opts) {
+  const series = opts.series || [{ key: opts.value, label: opts.valueLabel || "Value", color: "var(--s1)" }];
+  const total = it => opts.total ? num(opts.total(it)) : series.reduce((a, s) => a + (num(it[s.key]) || 0), 0);
+  const max = Math.max(...items.map(total), 0) || 1;
+  const wrap = h("div", { class: "bars" });
+  for (const it of items) {
+    const t = total(it);
+    const segs = series.map(s => ({ s, v: num(it[s.key]) || 0 })).filter(x => x.v > 0);
+    const rest = t - segs.reduce((a, x) => a + x.v, 0);
+    if (opts.series && rest > t * 0.01) segs.push({ s: { label: "Other / not split", color: "var(--neutral)" }, v: rest });
+    const tipHtml = `<b>${esc(opts.label(it))}</b>` + segs.map(x => `<div class="line-item"><span class="sw" style="background:${x.s.color}"></span>${esc(x.s.label)}: <b>${esc(opts.fmt ? opts.fmt(x.v) : fmt(x.v))}</b></div>`).join("") + (opts.extra ? opts.extra(it) : "");
+    wrap.append(h("div", { class: "bar-row", "data-tip": tipHtml },
+      h("div", { class: "bar-label", title: opts.label(it) }, opts.tag && opts.tag(it) ? h("span", { class: "tag" }, opts.tag(it)) : null, opts.label(it)),
+      h("div", { class: "track" }, segs.map(x => h("div", { class: "seg", style: `width:${(x.v / max * 100).toFixed(2)}%;background:${x.s.color}` }))),
+      h("div", { class: "bar-value" }, opts.fmt ? opts.fmt(t) : fmt(t))));
+  }
+  return wrap;
+}
+const legend = series => h("div", { class: "legend" }, series.map(s => h("span", null, h("i", { class: "sw", style: `background:${s.color}` }), s.label)));
+
+// sortable, filterable table. cols: [{k,label,num,fmt,sort}]
+function dataTable(rows, cols, opts = {}) {
+  let sortCol = opts.sort ?? null, dir = opts.dir || -1, q = "";
+  const tbody = h("tbody"), count = h("span", { class: "count" });
+  const ths = cols.map((c, i) => h("th", { class: c.num ? "num" : null, scope: "col", tabindex: "0",
+    onclick: () => { dir = sortCol === i ? -dir : (c.num ? -1 : 1); sortCol = i; draw(); },
+    onkeydown: e => { if (e.key === "Enter") e.target.click(); } }, c.label || c.k));
+  function draw() {
+    let list = rows.filter(r => !q || cols.some(c => String(r[c.k] ?? "").toLowerCase().includes(q)));
+    if (sortCol != null) {
+      const c = cols[sortCol], key = c.sort || c.k;
+      list = list.slice().sort((a, b) => {
+        const x = a[key], y = b[key];
+        if (c.num) return ((num(x) || 0) - (num(y) || 0)) * dir;
+        return String(x ?? "").localeCompare(String(y ?? "")) * dir;
+      });
+    }
+    ths.forEach((t, i) => t.setAttribute("aria-sort", i === sortCol ? (dir > 0 ? "ascending" : "descending") : "none"));
+    tbody.replaceChildren(...list.map(r => h("tr", null, cols.map(c => h("td", { class: c.num ? "num" : null }, c.fmt ? c.fmt(r[c.k], r) : (c.num ? fmt(r[c.k], c.dec ?? 2) : (r[c.k] ?? "")))))));
+    count.textContent = `${list.length} of ${rows.length} rows`;
+  }
+  draw();
+  return h("div", null,
+    opts.filter === false ? null : h("div", { class: "table-tools" },
+      h("input", { type: "search", placeholder: "Filter…", "aria-label": "Filter table", oninput: e => { q = e.target.value.toLowerCase(); draw(); } }), count),
+    h("div", { class: "table-wrap" }, h("table", null, h("thead", null, h("tr", null, ths)), tbody)));
+}
+
+function toggleTable(label, build) {
+  const holder = h("div");
+  const btn = h("button", { class: "btn", type: "button", "aria-expanded": "false", onclick: () => {
+    const open = btn.getAttribute("aria-expanded") === "true";
+    btn.setAttribute("aria-expanded", String(!open)); btn.textContent = (open ? "Show " : "Hide ") + label;
+    holder.replaceChildren(open ? "" : build());
+  } }, "Show " + label);
+  return h("div", { style: "margin-top:12px" }, btn, holder);
+}
+const card = (title, hint, ...body) => h("section", { class: "card" }, title ? h("h3", null, title) : null, hint ? h("p", { class: "hint" }, hint) : null, ...body);
+
+// ---------- views ----------
+const main = document.getElementById("main");
+const contentWidth = () => Math.max(300, main.clientWidth - 48 - 34);
+
+function viewTrends(params) {
+  const metricKey = params.get("metric") || METRICS[0].h;
+  const m = METRICS.find(x => x.h === metricKey) || METRICS[0];
+  if (!history.length) {
+    main.append(h("div", { class: "empty" }, h("h2", null, "No history yet"), h("p", null, "Run Invoke-PhoneDiagnostics.ps1 with the phone connected to create the first entry.")));
+    return;
+  }
+  main.append(h("h2", null, "Trends"),
+    h("p", { class: "sub" }, `${history.length} measurement${history.length > 1 ? "s" : ""} from history.csv · ${fmtDate(history[0].date)} → ${fmtDate(history[history.length - 1].date)}. Select a metric to chart it.`),
+    h("p", { class: "note" }, "Battery statistics count since the last full charge. Runs taken while the phone stays on the charger repeat the same numbers. For a meaningful trend, run once a day just before you plug the phone in."));
+
+  const tiles = h("div", { class: "tiles" });
+  for (const mt of METRICS) {
+    const vals = history.map(r => num(r[mt.h])).filter(v => !isNaN(v));
+    if (!vals.length) continue;
+    const last = vals[vals.length - 1], prev = vals.length > 1 ? vals[vals.length - 2] : undefined;
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    tiles.append(tile(mt, last, {
+      prev, pressed: mt === m, spark: sparkline(vals),
+      stats: `min ${fmt(Math.min(...vals), mt.dec)} · avg ${fmt(avg, mt.dec)} · max ${fmt(Math.max(...vals), mt.dec)}`,
+      onclick: () => { location.hash = `#/trends?metric=${mt.h}`; }
+    }));
+  }
+  main.append(tiles);
+
+  const points = history.map(r => ({ x: r.date, y: num(r[m.h]), run: runForHistory(r) })).filter(p => !isNaN(p.y));
+  main.append(card(m.label + (m.unit ? ` (${m.unit})` : ""), m.help,
+    points.length ? lineChart(points, m, contentWidth()) : h("p", null, "No values for this metric."),
+    toggleTable("data table", () => dataTable(points.map(p => ({ when: fmtDate(p.x), t: +p.x, value: p.y, status: m.st ? STATUS[m.st(p.y)].label : "", report: p.run })),
+      [{ k: "when", label: "Captured", sort: "t" }, { k: "value", label: m.label, num: true, dec: m.dec }, { k: "status", label: "Status" },
+       { k: "report", label: "Report", fmt: v => v ? h("a", { href: `#/run/${encodeURIComponent(v.id)}/overview` }, "open") : "–" }], { sort: 0, dir: -1, filter: false }))));
+
+  main.append(card("All history rows", "Every row of history.csv. Click a column to sort.",
+    dataTable(history.slice().reverse().map(r => ({ ...r, t: +r.date })),
+      [{ k: "Timestamp", label: "Captured", sort: "t", fmt: (v, r) => h("span", { style: "white-space:nowrap" }, fmtDate(r.date)),
+         }, { k: "report", label: "Report", fmt: (v, r) => { const run = runForHistory(r); return run ? h("a", { href: `#/run/${encodeURIComponent(run.id)}/overview` }, "open") : "–"; } }, ...METRICS.map(x => ({ k: x.h, label: x.label, num: true, dec: x.dec })), { k: "TopBackgroundApp", label: "Top background app" }, { k: "Build" }])));
+}
+
+const TABS = [
+  ["overview", "Overview"], ["advice", "Advice"], ["apps", "Apps"], ["wakeups", "Wakeups"],
+  ["processes", "Processes"], ["network", "Network"], ["services", "Services"], ["debloat", "Debloat"], ["snapshot", "Snapshot"]
+];
+
+function viewRun(run, tab) {
+  const prev = prevRun(run);
+  main.append(h("h2", null, "Report · " + fmtDate(run.date)),
+    h("p", { class: "sub" }, `${run.device?.model || "?"} · Android ${run.device?.android || "?"} · build ${run.device?.build || "?"} · uptime ${run.metrics?.uptime || "?"}`,
+      prev ? ` · compared with ${fmtDate(prev.date)}` : " · first report (no comparison yet)"));
+  const tabs = h("div", { class: "tabs", role: "tablist" }, TABS.map(([id, label]) =>
+    h("button", { class: "tab", role: "tab", type: "button", "aria-selected": String(id === tab),
+      onclick: () => { location.hash = `#/run/${encodeURIComponent(run.id)}/${id}`; } },
+      label, id === "advice" ? h("span", { class: "badge" }, (run.advice || []).length) : null)));
+  main.append(tabs);
+  (RUN_VIEWS[tab] || RUN_VIEWS.overview)(run, prev);
+}
+
+const APP_SERIES = [
+  { key: "Screen-on fg mAh", label: "In use (screen on)", color: "var(--s1)" },
+  { key: "Background mAh", label: "Background", color: "var(--s2)" },
+  { key: "FG-service mAh", label: "Foreground service", color: "var(--s3)" },
+  { key: "Cached mAh", label: "Idle / cached", color: "var(--s4)" },
+];
+
+const RUN_VIEWS = {
+  overview(run, prev) {
+    const tiles = h("div", { class: "tiles" });
+    for (const m of [...METRICS, ...RUN_EXTRA]) {
+      const v = m.run(run);
+      if (isNaN(num(v))) continue;
+      tiles.append(tile(m, v, { prev: prev ? m.run(prev) : undefined }));
+    }
+    main.append(tiles);
+    const gp = Object.entries(run.globalPower || {}).map(([k, v]) => ({ k, v })).sort((a, b) => b.v - a.v);
+    const top = (run.advice || []).slice(0, 4);
+    main.append(h("div", { class: "grid2" },
+      card("Where the energy went", "Estimated mAh per component since the last full charge.",
+        barRows(gp, { value: "v", valueLabel: "mAh", label: x => x.k.replace(/_/g, " "), fmt: v => fmt(v, 0) + " mAh" })),
+      card("Most important advice", null,
+        top.length ? top.map(adviceItem) : h("p", null, "No issues detected."),
+        h("p", null, h("a", { href: `#/run/${encodeURIComponent(run.id)}/advice` }, `See all ${(run.advice || []).length} items →`)),
+        h("h3", { style: "margin-top:16px" }, "Profiles"),
+        h("div", { class: "users" }, (run.users || []).map(u => chip(u.Running ? (u.Id === 0 ? "good" : "warning") : "info", `${u.Id} · ${u.Name}${u.Running ? " · running" : ""}`))))));
+  },
+  advice(run) {
+    const groups = ["HIGH", "MEDIUM", "LOW"].map(sev => [sev, (run.advice || []).filter(a => a.Severity === sev)]).filter(g => g[1].length);
+    if (!groups.length) { main.append(card("Advice", null, h("p", null, "Nothing to report."))); return; }
+    for (const [sev, items] of groups) main.append(card(`${sev === "HIGH" ? "High" : sev === "MEDIUM" ? "Medium" : "Low"} priority (${items.length})`, null, items.map(adviceItem)));
+  },
+  apps(run) {
+    const apps = (run.apps || []).slice().sort((a, b) => num(b["Total mAh"]) - num(a["Total mAh"]));
+    main.append(card("Energy per app", "Top consumers since the last full charge, split by what the app was doing. Background and idle energy is spent while you were not using the app.",
+      legend([...APP_SERIES, { label: "Other / not split", color: "var(--neutral)" }]),
+      barRows(apps, { series: APP_SERIES, total: a => a["Total mAh"], label: a => a.App, fmt: v => fmt(v, 0) + " mAh",
+        extra: a => `<div class="k">CPU ${esc(fmt(a.CPU))} · radio ${esc(fmt(a["Mobile radio"]))} · wakelock ${esc(fmt(a.Wakelock))} mAh${a["FGS time"] ? " · FG service " + esc(a["FGS time"]) : ""}</div>` }),
+      h("h3", { style: "margin-top:20px" }, "Table"),
+      dataTable(apps, [{ k: "App" }, { k: "Total mAh", num: true, dec: 1 }, { k: "Screen-on fg mAh", label: "In use", num: true }, { k: "Background mAh", label: "Background", num: true },
+        { k: "FG-service mAh", label: "FG service", num: true }, { k: "Cached mAh", label: "Idle", num: true }, { k: "CPU", num: true }, { k: "Mobile radio", num: true }, { k: "Wakelock", num: true }, { k: "FGS time", label: "FG service time" }, { k: "Uid" }], { sort: 1 })));
+  },
+  wakeups(run) {
+    const wifiTag = r => /wlan|cnss|wifi|0000:01:00/i.test(r["Wakeup reason"] || r["Kernel wakelock"] || "") ? "Wi-Fi" : /umts|qcom_rx|rmnet|radio|cp_mbox/i.test(r["Wakeup reason"] || r["Kernel wakelock"] || "") ? "Modem" : null;
+    main.append(h("div", { class: "grid2" },
+      card("What woke the CPU", "Hardware wakeup reasons since last charge, by count. \"Abort\" = a sleep attempt that was cancelled.",
+        barRows(run.wakeups || [], { value: "Times", valueLabel: "Times", label: r => r["Wakeup reason"], tag: wifiTag, fmt: v => fmt(v, 0), extra: r => `<div class="k">Total ${esc(r.Duration)}</div>` })),
+      card("Kernel wakelocks", "What kept the kernel awake, by count.",
+        barRows(run.kernel || [], { value: "Times", valueLabel: "Times", label: r => r["Kernel wakelock"], tag: wifiTag, fmt: v => fmt(v, 0), extra: r => `<div class="k">Held ${esc(r.Held)}</div>` }))));
+    const wl = Object.entries(run.wlanWake || {}).filter(([k, v]) => v > 0 && !/^total/i.test(k)).map(([k, v]) => ({ k, v })).sort((a, b) => b.v - a.v);
+    main.append(h("div", { class: "grid2", style: "margin-top:16px" },
+      card("Wi-Fi multicast lock holders (at capture)", "Apps forcing the Wi-Fi chip to receive all multicast traffic (device discovery / mDNS). This costs battery.",
+        (run.multicast || []).length ? h("div", { class: "pkg-list" }, run.multicast.map(m => h("span", { class: "pkg" }, chip("warning", m.Tag), m.Label))) : h("p", null, "None held.")),
+      card("Wi-Fi wake reasons (current Wi-Fi session)", "Packet types that woke the phone over Wi-Fi.",
+        wl.length ? barRows(wl, { value: "v", valueLabel: "Wakeups", label: x => x.k, fmt: v => fmt(v, 0) }) : h("p", null, "Not available."))));
+    main.append(card("App wakelocks", "Apps holding the CPU awake, by total time held.",
+      barRows(run.partial || [], { value: "Sec", valueLabel: "Held", label: r => `${r.App} · ${r.Wakelock}`, fmt: fmtDur, extra: r => `<div class="k">${esc(r.Times)} times</div>` }),
+      toggleTable("table", () => dataTable(run.partial || [], [{ k: "App" }, { k: "Wakelock" }, { k: "Held", sort: "Sec", num: true, fmt: v => v }, { k: "Times", num: true, dec: 0 }], { sort: 2 }))));
+  },
+  processes(run) {
+    main.append(card("CPU time per process", "Since the last full charge. High kernel share = time spent in drivers or sleep retries.",
+      barRows(run.procs || [], { value: "CpuSec", valueLabel: "CPU", label: p => `${p.Process}`, fmt: fmtDur, extra: p => `<div class="k">Owner: ${esc(p.Owner)} · kernel ${esc(p["Kernel share"])}</div>` }),
+      toggleTable("table", () => dataTable(run.procs || [], [{ k: "Process" }, { k: "Owner" }, { k: "CPU", sort: "CpuSec", num: true, fmt: v => v }, { k: "Kernel share", num: true, fmt: v => v }], { sort: 2 }))));
+  },
+  network(run) {
+    const s = [{ key: "Mobile MB", label: "Mobile data", color: "var(--s1)" }, { key: "Wi-Fi MB", label: "Wi-Fi", color: "var(--s2)" }];
+    main.append(card("Data per app", "Megabytes sent + received since the last full charge.",
+      legend(s), barRows(run.network || [], { series: s, label: r => r.App, fmt: v => fmt(v, 1) + " MB" }),
+      toggleTable("table", () => dataTable(run.network || [], [{ k: "App" }, { k: "Mobile MB", num: true, dec: 1 }, { k: "Wi-Fi MB", num: true, dec: 1 }], { sort: 1 }))));
+  },
+  services(run) {
+    main.append(card("Running services (at capture)", "Number of service records per app and user (u0 = personal, u10 = work, u95 = Dual Apps, u150 = Secure Folder).",
+      barRows(run.services || [], { value: "Services", valueLabel: "Services", label: r => r.App, fmt: v => fmt(v, 0), extra: r => `<div class="k">${esc(r.Foreground)} in foreground</div>` }),
+      toggleTable("table", () => dataTable(run.services || [], [{ k: "App" }, { k: "Services", num: true, dec: 0 }, { k: "Foreground", num: true, dec: 0 }], { sort: 1 }))));
+  },
+  debloat(run) {
+    const b = run.bloat || {};
+    const selected = new Set(b.safe || []);
+    const out = h("pre", { "aria-live": "polite" });
+    const undo = h("pre");
+    const draw = () => {
+      const list = [...selected];
+      out.textContent = list.length ? list.map(p => `adb shell pm disable-user --user 0 ${p}`).join("\n") : "# nothing selected";
+      undo.textContent = list.length ? list.map(p => `adb shell pm enable ${p}`).join("\n") : "# nothing selected";
+    };
+    const pick = (p, checked) => h("label", { class: "pkg" }, h("input", { type: "checkbox", checked: checked || null, onchange: e => { e.target.checked ? selected.add(p) : selected.delete(p); draw(); } }), p);
+    const copyBtn = (pre) => h("button", { class: "btn", type: "button", onclick: async e => {
+      try { await navigator.clipboard.writeText(pre.textContent); e.target.textContent = "Copied"; }
+      catch { const r = document.createRange(); r.selectNodeContents(pre); getSelection().removeAllRanges(); getSelection().addRange(r); e.target.textContent = "Selected – press Ctrl+C"; }
+      setTimeout(() => { e.target.textContent = "Copy"; }, 2000);
+    } }, "Copy");
+    draw();
+    main.append(h("p", { class: "note" }, "Nothing here has been run on the phone. These commands are reversible (disable / enable). Review each package, disable in small batches, reboot and use the phone for a day before the next batch. See README section 6."),
+      h("div", { class: "grid2" },
+        card(`Safe to disable – still enabled (${(b.safe || []).length})`, "Tick the ones you want in the command list.", h("div", { class: "pkg-list" }, (b.safe || []).map(p => pick(p, true)))),
+        card(`Optional – only if you do not use the feature (${(b.optional || []).length})`, "Unticked by default.", h("div", { class: "pkg-list" }, (b.optional || []).map(p => pick(p, false))))),
+      h("div", { class: "grid2", style: "margin-top:16px" },
+        card("Disable commands", null, out, h("div", { style: "margin-top:8px" }, copyBtn(out))),
+        card("Undo commands", null, undo, h("div", { style: "margin-top:8px" }, copyBtn(undo)))),
+      h("div", { style: "margin-top:16px" }, card("Never touch", "Disabling these breaks features or the phone.", h("div", { class: "pkg-list" }, (b.never || []).map(p => h("span", { class: "pkg" }, chip("critical", "Keep"), p))))));
+  },
+  snapshot(run) {
+    const kv = obj => h("dl", { class: "kv" }, Object.entries(obj || {}).map(([k, v]) => [h("dt", null, k), h("dd", null, String(v ?? "–"))]));
+    main.append(h("div", { class: "grid2" },
+      card("Device", null, kv(run.device)),
+      card("Battery & settings", null, kv({ ...Object.fromEntries(Object.entries(run.battery || {}).map(([k, v]) => ["battery." + k, v])), ...(run.settings || {}) }))),
+      h("div", { style: "margin-top:16px" }, card("Live CPU snapshot (top)", "Processes using CPU at the moment of capture.", h("pre", null, (run.top || []).join("\n")))));
+  },
+};
+
+function adviceItem(a) {
+  const st = SEVERITY[a.Severity] || "info";
+  return h("div", { class: "advice" }, chip(st, a.Severity === "HIGH" ? "High" : a.Severity === "MEDIUM" ? "Medium" : "Low"),
+    h("div", null, h("span", { class: "area" }, a.Area + ": "), a.Finding), h("div", { class: "fix" }, "→ " + a.Suggestion));
+}
+
+// ---------- nav + routing ----------
+const nav = document.getElementById("nav");
+function drawNav(route) {
+  nav.replaceChildren(
+    h("div", { class: "nav-label" }, "Overview"),
+    h("button", { class: "nav-item", type: "button", "aria-current": String(route.view === "trends"), onclick: () => { location.hash = "#/trends"; } },
+      h("span", { class: "t" }, "Trends"), h("span", { class: "s" }, `${history.length} measurements`)),
+    h("div", { class: "nav-label" }, `Reports (${runs.length})`),
+    ...runs.map(r => {
+      const v = num(r.metrics?.screenOffRate), st = isNaN(v) ? "info" : METRICS[0].st(v);
+      return h("button", { class: "nav-item", type: "button", "aria-current": String(route.run === r), onclick: () => { location.hash = `#/run/${encodeURIComponent(r.id)}/${route.tab || "overview"}`; } },
+        h("span", { class: "t" }, fmtDate(r.date)),
+        h("span", { class: "s" }, chip(st, `${fmt(v, 2)} %/h`), `${(r.advice || []).filter(a => a.Severity === "HIGH").length} high`));
+    }));
+}
+
+function parseRoute() {
+  const hash = location.hash.replace(/^#\/?/, "");
+  const [path, qs] = hash.split("?");
+  const parts = path.split("/").map(decodeURIComponent);
+  if (parts[0] === "run") {
+    const run = runs.find(r => r.id === parts[1]);
+    if (run) return { view: "run", run, tab: parts[2] || "overview" };
+  }
+  return { view: "trends", params: new URLSearchParams(qs || "") };
+}
+
+function render() {
+  hideTip();
+  const route = parseRoute();
+  drawNav(route);
+  main.replaceChildren();
+  if (!runs.length && !history.length) {
+    main.append(h("div", { class: "empty" }, h("h2", null, "No reports yet"), h("p", null, "Connect the phone and run .\\Invoke-PhoneDiagnostics.ps1 – this page is rebuilt after every run.")));
+    return;
+  }
+  if (route.view === "run") viewRun(route.run, route.tab); else viewTrends(route.params);
+  main.focus({ preventScroll: true });
+}
+
+const latest = runs[0];
+document.getElementById("device").textContent = latest ? `${latest.device?.model || ""} · Android ${latest.device?.android || ""} · data generated ${fmtDate(parseDate(DATA.generated))}` : "";
+
+// ---------- theme toggle (auto -> light -> dark), remembered per browser ----------
+const themeBtn = document.getElementById("theme");
+const THEMES = ["auto", "light", "dark"];
+function applyTheme(t) {
+  if (t === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+  themeBtn.textContent = "Theme: " + t;
+}
+let theme = "auto";
+try { theme = localStorage.getItem("pbd-theme") || "auto"; } catch { /* storage blocked */ }
+applyTheme(theme);
+themeBtn.addEventListener("click", () => {
+  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]; applyTheme(theme);
+  try { localStorage.setItem("pbd-theme", theme); } catch { /* storage blocked */ }
+  render();
+});
+
+let resizeTimer;
+addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
+addEventListener("hashchange", render);
+main.tabIndex = -1;
+if (!location.hash && runs.length) location.hash = `#/run/${encodeURIComponent(runs[0].id)}/overview`; else render();
+</script>
+</body>
+</html>
